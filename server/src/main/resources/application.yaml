@@ -1,0 +1,20 @@
+server:
+  port: 8081
+
+
+mybatis-plus:
+  configuration:
+    # MyBatis 配置
+    map-underscore-to-camel-case: true
+  mapper-locations: classpath:/mapper/**.xml
+  global-config:
+    # 全局配置
+    db-config:
+      # 数据库配置
+      id-type: auto
+spring:
+  datasource:
+    username: root
+    password: 1234
+    url: jdbc:mysql://localhost:3306/bpvank?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    driver-class-name: com.mysql.cj.jdbc.Driver
