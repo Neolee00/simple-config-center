@@ -13,11 +13,14 @@ public class ConfigCenterEnvironmentProcessor implements ApplicationContextIniti
         MutablePropertySources propertySources = environment.getPropertySources();
         String configContent = reqConfig();
         propertySources.addLast(new ConfigCenterPropertySource("configCenterPropertySource", configContent));
-
     }
 
     public static String reqConfig() {
         RestTemplate restTemplate = new RestTemplate();
-        return restTemplate.getForObject("http://localhost:8081/config", String.class);
+        try {
+            return restTemplate.getForObject("http://localhost:8081/config", String.class);
+        } catch (Exception e) {
+            return "useLocalCache: true";
+        }
     }
 }

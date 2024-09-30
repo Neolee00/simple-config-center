@@ -1,4 +1,4 @@
-package com.lgblogs.client;
+package com.lgblogs.client.controller;
 
 import com.lgblogs.client.annotation.ConfigRefresh;
 import org.springframework.web.bind.annotation.GetMapping;

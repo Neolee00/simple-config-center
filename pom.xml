@@ -13,7 +13,11 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <spring-boot.version>2.7.6</spring-boot.version>
     </properties>
-
+    <modules>
+        <module>client</module>
+        <module>server</module>
+    </modules>
+    <packaging>pom</packaging>
     <dependencyManagement>
         <dependencies>
             <dependency>
