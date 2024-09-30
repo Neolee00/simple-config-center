@@ -1,9 +1,21 @@
 package com.lgblogs.client.environment;
 
 import com.lgblogs.client.annotation.ConfigRefresh;
+import com.lgblogs.client.event.ConfigRefreshEvent;
+import com.lgblogs.client.listener.ConfigRefreshEventListener;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.BeanFactoryAware;
+import org.springframework.beans.factory.config.BeanExpressionContext;
+import org.springframework.beans.factory.config.BeanExpressionResolver;
 import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.MutablePropertySources;
 import org.springframework.util.ReflectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -15,9 +27,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.springframework.core.annotation.AnnotationUtils.getAnnotation;
 
-public class ConfigRefreshAnnotationBeanPostProcessor implements BeanPostProcessor {
+public class ConfigRefreshAnnotationBeanPostProcessor implements BeanFactoryAware, EnvironmentAware, BeanPostProcessor, ConfigRefreshEventListener {
 
     private Map<String, List<ConfigRefreshTarget>> placeholderNacosValueTargetMap = new ConcurrentHashMap<>();
+    private ConfigurableEnvironment environment;
+    private ConfigurableListableBeanFactory beanFactory;
+    private BeanExpressionResolver exprResolver;
+    private BeanExpressionContext exprContext;
 
     private static final String SPEL_PREFIX = "#{";
 
@@ -89,6 +105,64 @@ public class ConfigRefreshAnnotationBeanPostProcessor implements BeanPostProcess
     public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
         doWithFields(bean, beanName);
         return BeanPostProcessor.super.postProcessBeforeInitialization(bean, beanName);
+    }
+
+
+    @Override
+    public void process(ConfigRefreshEvent event) {
+        String configContent = event.getContent();
+        ConfigCenterPropertySource source = new ConfigCenterPropertySource("configContentFromEvent", configContent);
+        MutablePropertySources propertySources = environment.getPropertySources();
+        propertySources.replace("configCenterPropertySource", source);
+        for (Map.Entry<String, List<ConfigRefreshTarget>> entry : placeholderNacosValueTargetMap.entrySet()) {
+            String key = environment.resolvePlaceholders(entry.getKey());
+            String newValue = environment.getProperty(key);
+            if (newValue == null) {
+                continue;
+            }
+            List<ConfigRefreshTarget> targetList = entry.getValue();
+            for (ConfigRefreshTarget target : targetList) {
+                Object evaluatedValue = resolveNotifyValue(target.configRefreshExpr, key, newValue);
+                setField(target, evaluatedValue);
+            }
+        }
+    }
+
+    private void setField(ConfigRefreshTarget target, Object evaluatedValue) {
+        Object bean = target.bean;
+        Field field = target.field;
+        String fieldName = field.getName();
+        try {
+            ReflectionUtils.makeAccessible(field);
+            field.set(bean, beanFactory.getTypeConverter().convertIfNecessary(evaluatedValue, field.getType(), field));
+        } catch (Exception e) {
+            System.out.println(String.format("刷新Bean属性时报错，Bean名称为：%s，属性名为：%s \r\n %s", bean.getClass().getSimpleName(), fieldName, e));
+        }
+    }
+
+    private Object resolveNotifyValue(String nacosValueExpr, String key, String newValue) {
+        String spelExpr = nacosValueExpr.replaceAll("\\$\\{" + key + PLACEHOLDER_SUFFIX, newValue);
+        return resolveStringValue(spelExpr);
+    }
+
+    private Object resolveStringValue(String strVal) {
+        String value = beanFactory.resolveEmbeddedValue(strVal);
+        if (exprResolver != null && value != null) {
+            return exprResolver.evaluate(value, exprContext);
+        }
+        return value;
+    }
+
+    @Override
+    public void setEnvironment(Environment environment) {
+        this.environment = (ConfigurableEnvironment) environment;
+    }
+
+    @Override
+    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+        this.beanFactory = (ConfigurableListableBeanFactory) beanFactory;
+        this.exprResolver = ((ConfigurableListableBeanFactory) beanFactory).getBeanExpressionResolver();
+        this.exprContext = new BeanExpressionContext((ConfigurableListableBeanFactory) beanFactory, null);
     }
 
     public class ConfigRefreshTarget {
